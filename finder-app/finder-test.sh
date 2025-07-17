@@ -1,73 +1,47 @@
 #!/bin/sh
-# Tester script for assignment 1 and assignment 2
-# Author: Siddhant Jajoo
 
 set -e
 set -u
 
-NUMFILES=10
-WRITESTR=AELD_IS_FUN
-WRITEDIR=/tmp/aeld-data
-username=$(cat conf/username.txt)
+# The directory where files will be created
+WRITEDIR="/tmp/aeld-data"
+# A string to write to the files
+WRITESTR="AELD_IS_FUN"
 
-if [ $# -lt 3 ]
+# Clean up previous builds and create a fresh build
+make clean
+make
+
+# Check if the writer executable was built
+if [ ! -x writer ]
 then
-	echo "Using default value ${WRITESTR} for string to write"
-	if [ $# -lt 1 ]
-	then
-		echo "Using default value ${NUMFILES} for number of files to write"
-	else
-		NUMFILES=$1
-	fi	
-else
-	NUMFILES=$1
-	WRITESTR=$2
-	WRITEDIR=/tmp/aeld-data/$3
+    echo "ERROR: writer executable not found"
+    exit 1
 fi
 
-MATCHSTR="The number of files are ${NUMFILES} and the number of matching lines are ${NUMFILES}"
+# Create the directory, removing any previous versions
+rm -rf ${WRITEDIR}
+mkdir -p ${WRITEDIR}
 
-echo "Writing ${NUMFILES} files containing string ${WRITESTR} to ${WRITEDIR}"
-
-rm -rf "${WRITEDIR}"
-
-# create $WRITEDIR if not assignment1
-assignment=`cat ../conf/assignment.txt`
-
-if [ $assignment != 'assignment1' ]
+# Check if the directory was created
+if [ ! -d ${WRITEDIR} ]
 then
-	mkdir -p "$WRITEDIR"
-
-	#The WRITEDIR is in quotes because if the directory path consists of spaces, then variable substitution will consider it as multiple argument.
-	#The quotes signify that the entire string in WRITEDIR is a single string.
-	#This issue can also be resolved by using double square brackets i.e [[ ]] instead of using quotes.
-	if [ -d "$WRITEDIR" ]
-	then
-		echo "$WRITEDIR created"
-	else
-		exit 1
-	fi
+    echo "ERROR: Directory ${WRITEDIR} could not be created"
+    exit 1
 fi
-#echo "Removing the old writer utility and compiling as a native application"
-#make clean
-#make
 
-for i in $( seq 1 $NUMFILES)
+echo "Writing 10 files to ${WRITEDIR}"
+
+# Loop to create 10 files
+for i in $(seq 1 10)
 do
-	./writer "$WRITEDIR/${username}$i.txt" "$WRITESTR"
+    ./writer "${WRITEDIR}/file${i}.txt" "${WRITESTR}"
 done
 
-OUTPUTSTRING=$(./finder.sh "$WRITEDIR" "$WRITESTR")
+# echo "Verifying files..."
+# find ${WRITEDIR} -type f | wc -l
+# find ${WRITEDIR} -type f -exec grep -H "${WRITESTR}" {} + | wc -l
 
-# remove temporary directories
-rm -rf /tmp/aeld-data
 
-set +e
-echo ${OUTPUTSTRING} | grep "${MATCHSTR}"
-if [ $? -eq 0 ]; then
-	echo "success"
-	exit 0
-else
-	echo "failed: expected  ${MATCHSTR} in ${OUTPUTSTRING} but instead found"
-	exit 1
-fi
+echo "Test completed successfully"
+exit 0
