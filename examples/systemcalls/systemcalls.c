@@ -1,6 +1,8 @@
 #include "systemcalls.h"
 #include <string.h>
 #include <sys/types.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 /**
  * @param cmd the command to execute with system()
@@ -44,10 +46,9 @@ bool do_system(const char *cmd)
 
 bool do_exec(int count, ...)
 {
-    pid_t pid;
     va_list args;
     va_start(args, count);
-    char *command[count+1];
+    char **command = malloc((count+1) * sizeof(char *));
     int i;
     for(i=0; i<count; i++)
     {
@@ -56,7 +57,9 @@ bool do_exec(int count, ...)
     command[count] = NULL;
     // this line is to avoid a compile warning before your implementation is complete
     // and may be removed
-    command[count] = command[count];
+
+    va_end(args);
+
 
 /*
  * TODO:
@@ -68,12 +71,13 @@ bool do_exec(int count, ...)
  *
 #include <string.h>
 */
-   pid = fork();
+   pid_t pid = fork();
 
    if(pid == -1){
 	   perror("fork");
-	   exit(EXIT_FAILURE);
-   }else if{
+	   free(command);
+	   return false;
+   }else if(pid == 0) {
 	   //child process
 	   execv(command[0], command);
 
@@ -81,13 +85,15 @@ bool do_exec(int count, ...)
 	   exit(EXIT_FAILURE);
    }else{
 	   //parent process waiting for child to finish
-	   int child_status;
-
-	   waitpid(pid, &child_status, 0);
+	   int status;
+	if (waitpid, &status, 0) == -1{
+		perror("waitpid");
+		free(command);
+		return false;
+	}
    }
-   
+   free(command);
 
-    va_end(args);
 
     return true;
 }
@@ -99,20 +105,18 @@ bool do_exec(int count, ...)
 */
 bool do_exec_redirect(const char *outputfile, int count, ...)
 {
-    pid_t pid;
     va_list args;
     va_start(args, count);
-    char *command[count+1];
+    char **command = malloc((count+1) * sizeof(char *));
     int i;
     for(i=0; i<count; i++)
     {
         command[i] = va_arg(args, char *);
-    }c
+    }
     command[count] = NULL;
     // this line is to avoid a compile warning before your implementation is complete
     //c and may be removed
-    command[count] = command[count];
-
+    va_end(args);
 /*
  * TODO
  *   Call execv, but first using https://stackoverflow.com/a/13784315/1446624 as a refernce,
@@ -122,29 +126,29 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
 */
     //flush output buffer
     fflush(stdout);
-    pid = fork();
+    pid_t pid = fork();
 
     if(pid == -1){
  	   perror("fork");
-	   exit(EXIT_FAILURE);
-    }else if{
+	   free(command);
+	   return false;
+    }else if(pid == 0){
 	   //child process
 	   printf("Child Process");
 	   execv(command[0], command);
-
 	   perror("execv");
 	   exit(EXIT_FAILURE);
     }else{
 	   //parent process waiting for child to finish
 	   printf("Parent Process");
-	   int child_status;
+	   int status;
+	   if (waitpid(pid, &status, 0) == -1){
+		   perror("waitpid");
+		   free(command);
+		   return false;
+	   }
 
-	   waitpid(pid, &child_status, 0);
    } 
- 
-
-
-    va_end(args);
-
+    free(command);
     return true;
 }
