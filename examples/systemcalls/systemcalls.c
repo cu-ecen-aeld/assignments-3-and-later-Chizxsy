@@ -1,8 +1,11 @@
 #include "systemcalls.h"
+#include <string.h>
+#include <sys/types.h>
 
 /**
  * @param cmd the command to execute with system()
- * @return true if the command in @param cmd was executed
+ * @return true if 
+#include <string.h>the command in @param cmd was executed
  *   successfully using the system() call, false if an error occurred,
  *   either in invocation of the system() call, or if a non-zero return
  *   value was returned by the command issued in @param cmd.
@@ -16,8 +19,13 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
+	int system_val = system(cmd);
+	if (system_val == 0){
+	       return true;
+	}else{
+		return false;
+	}	
 
-    return true;
 }
 
 /**
@@ -36,9 +44,10 @@ bool do_system(const char *cmd)
 
 bool do_exec(int count, ...)
 {
+    pid_t pid;
     va_list args;
     va_start(args, count);
-    char * command[count+1];
+    char *command[count+1];
     int i;
     for(i=0; i<count; i++)
     {
@@ -57,7 +66,26 @@ bool do_exec(int count, ...)
  *   (first argument to execv), and use the remaining arguments
  *   as second argument to the execv() command.
  *
+#include <string.h>
 */
+   pid = fork();
+
+   if(pid == -1){
+	   perror("fork");
+	   exit(EXIT_FAILURE);
+   }else if{
+	   //child process
+	   execv(command[0], command);
+
+	   perror("execv");
+	   exit(EXIT_FAILURE);
+   }else{
+	   //parent process waiting for child to finish
+	   int child_status;
+
+	   waitpid(pid, &child_status, 0);
+   }
+   
 
     va_end(args);
 
@@ -71,19 +99,19 @@ bool do_exec(int count, ...)
 */
 bool do_exec_redirect(const char *outputfile, int count, ...)
 {
+    pid_t pid;
     va_list args;
     va_start(args, count);
-    char * command[count+1];
+    char *command[count+1];
     int i;
     for(i=0; i<count; i++)
     {
         command[i] = va_arg(args, char *);
-    }
+    }c
     command[count] = NULL;
     // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
+    //c and may be removed
     command[count] = command[count];
-
 
 /*
  * TODO
@@ -92,6 +120,29 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   The rest of the behaviour is same as do_exec()
  *
 */
+    //flush output buffer
+    fflush(stdout);
+    pid = fork();
+
+    if(pid == -1){
+ 	   perror("fork");
+	   exit(EXIT_FAILURE);
+    }else if{
+	   //child process
+	   printf("Child Process");
+	   execv(command[0], command);
+
+	   perror("execv");
+	   exit(EXIT_FAILURE);
+    }else{
+	   //parent process waiting for child to finish
+	   printf("Parent Process");
+	   int child_status;
+
+	   waitpid(pid, &child_status, 0);
+   } 
+ 
+
 
     va_end(args);
 

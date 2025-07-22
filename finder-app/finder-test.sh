@@ -35,7 +35,7 @@ echo "Writing 10 files to ${WRITEDIR}"
 # Loop to create 10 files
 for i in $(seq 1 10)
 do
-    ./writer "${WRITEDIR}/file${i}.txt" "${WRITESTR}"
+    ./writer.sh "${WRITEDIR}/file${i}.txt" "${WRITESTR}"
 done
 
 # echo "Verifying files..."
