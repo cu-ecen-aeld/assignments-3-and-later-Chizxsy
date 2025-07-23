@@ -36,7 +36,7 @@ if [ ! -e ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ]; then
     # TODO: Add your kernel build steps here
     
     #removes .config file from the linux build tree
-    make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- mproper
+    make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- mrproper
     #configure virtual arm dev board for QEMU sim
     make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- defconfig
     #build kernel image
@@ -89,12 +89,14 @@ ${CROSS_COMPILE}readelf -a bin/busybox | grep "program interpreter"
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
 
 # TODO: Add library dependencies to rootfs
-    echo "working dir"
-    pwd
-    cp -p /lib/x86_64-linux-gnu/libm.so.6 ${OUTDIR}/rootfs
-    cp -p /lib/x86_64-linux-gnu/libc.so.6 ${OUTDIR}/rootfs
-    cp -p /lib64/ld-linux-x86_64.so.1 ${OUTDIR}/rootfs
-    cp -p /lib/x86_64-linux-gnu/libresolv.so.2 ${OUTDIR}/rootfs 
+
+    SYSROOT=$(${CROSS_COMPILE}gcc -print-sysroot)
+    cp -p ${SYSROOT}/lib64/ld-linux-aarch64.so.1 ${OUTDIR}/rootfs/lib
+    cp -p ${SYSROOT}/lib64/libm.so.6 ${OUTDIR}/rootfs/lib64
+    cp -p ${SYSROOT}/lib64/libresolv.so.2 ${OUTDIR}/rootfs/lib64
+    cp -p ${SYSROOT}/lib64/libc.so.6 ${OUTDIR}/rootfs/lib64
+
+
 # TODO: Make device nodes
     sudo mknod -m 666 ${OUTDIR}/rootfs/dev/null c 1 3
     sudo mknod -m 666 ${OUTDIR}/rootfs/dev/console c 5 1
@@ -108,11 +110,13 @@ ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
 # on the target rootfs
     cp finder.sh  ${OUTDIR}/rootfs/home
     cp finder-test.sh ${OUTDIR}/rootfs/home
+    cp writer ${OUTDIR}/rootfs/home
+    cp writer.sh ${OUTDIR}/rootfs/home
     cp conf/username.txt ${OUTDIR}/rootfs/home
     cp conf/assignment.txt ${OUTDIR}/rootfs/home
     cp autorun-qemu.sh ${OUTDIR}/rootfs/home
 # TODO: Chown the root directory
-
+    sudo chown -R root:root ${OUTDIR}/rootfs
 # TODO: Create initramfs.cpio.gz
     cd ${OUTDIR}/rootfs
     find . | cpio -H newc -ov --owner root:root > ${OUTDIR}/initramfs.cpio
