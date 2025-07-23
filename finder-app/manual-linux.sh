@@ -34,17 +34,17 @@ if [ ! -e ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ]; then
     git checkout ${KERNEL_VERSION}
 
     # TODO: Add your kernel build steps here
-    
-    #removes .config file from the linux build tree
-    make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- mrproper
-    #configure virtual arm dev board for QEMU sim
-    make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- defconfig
-    #build kernel image
-    make -j4 ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- all
-    #build any kernel modules
-    #make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu-modules
-    #build the device tree (DTBS)
-    make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- dtbs    
+    # 1. Clean the tree
+    make ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE mrproper
+
+    # 2. Set the default configuration
+    make ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE defconfig
+
+    # 3. Build the kernel Image
+    make -j4 ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE all
+
+    # 4. Build the device tree
+    make ARCH=$ARCH CROSS_COMPILE=$CROSS_COMPILE dtbs
 
 fi
 
