@@ -91,11 +91,20 @@ bool do_exec(int count, ...)
 		perror("waitpid");
 		return false;
 	}
-   }
 
 
-    va_end(args);
-    return true;
+    // Check if the child exited normally and had an exit code of 0
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+        // Success!
+    } else {
+        // Child failed (either crashed or returned non-zero)
+        va_end(args);
+        return false;
+    }
+}
+
+va_end(args);
+return true;
 }
 
 /**
@@ -157,8 +166,17 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
 		   return false;
 	   }
 
-   }
 
-    va_end(args);
-    return true;
+    // Check if the child exited normally and had an exit code of 0
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+        // Success!
+    } else {
+        // Child failed (either crashed or returned non-zero)
+        va_end(args);
+        return false;
+    }
+}
+
+va_end(args);
+return true;
 }
