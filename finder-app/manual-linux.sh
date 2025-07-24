@@ -82,21 +82,29 @@ fi
     make distclean
     make defconfig
     make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE}
-    make CONFIG_PREFIX=${OUTDIR}/rootfs ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE}install
+    make CONFIG_PREFIX=${OUTDIR}/rootfs ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} install
 
 
 echo "Library dependencies"
+cd ${OUTDIR}/rootfs
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "program interpreter"
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
 
 # TODO: Add library dependencies to rootfs
+    echo "Adding library dependencies"
+    SYSROOT=$(realpath $(${CROSS_COMPILE}gcc -print-sysroot))
+    echo "SYSROOT is ${SYSROOT}"
+    ${CROSS_COMPILE}readelf -a ${OUTDIR}/rootfs/bin/busybox | grep "program interpreter" | while read -r line; do
+        INTERPRETER=$(echo "$line" | awk '{print $NF}' | sed 's/]$//')
+        echo "Copying ${INTERPRETER} to ${OUTDIR}/rootfs"
+        cp -L "${SYSROOT}${INTERPRETER}" "${OUTDIR}/rootfs/lib"
+done
 
-    SYSROOT=$(${CROSS_COMPILE}gcc -print-sysroot)
-    cp -p ${SYSROOT}/lib64/ld-linux-aarch64.so.1 ${OUTDIR}/rootfs/lib
-    cp -p ${SYSROOT}/lib64/libm.so.6 ${OUTDIR}/rootfs/lib64
-    cp -p ${SYSROOT}/lib64/libresolv.so.2 ${OUTDIR}/rootfs/lib64
-    cp -p ${SYSROOT}/lib64/libc.so.6 ${OUTDIR}/rootfs/lib64
-
+${CROSS_COMPILE}readelf -a ${OUTDIR}/rootfs/bin/busybox | grep "Shared library" | while read -r line; do
+    LIBRARY=$(echo "$line" | awk '{print $NF}' | sed 's/[][]//g')
+    echo "Copying ${LIBRARY} to ${OUTDIR}/rootfs"
+    cp -L "${SYSROOT}/lib64/${LIBRARY}" "${OUTDIR}/rootfs/lib64"
+done
 
 # TODO: Make device nodes
     sudo mknod -m 666 ${OUTDIR}/rootfs/dev/null c 1 3
