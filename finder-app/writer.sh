@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 
 writefile=$1
