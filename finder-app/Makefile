@@ -1,19 +1,9 @@
-CC = $(CROSS_COMPILE)gcc
 
 TARGET = writer
 
-SOURCE = writer.c
-
-OBJECTS = $(SOURCE:.c=.o)
-
-all: $(TARGET)
-
-$(TARGET): $(OBJECTS)
-	$(CC) -o $(TARGET) $(OBJECTS)
-
-%.o: %.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+# Use the CC and CFLAGS variables passed in by Buildroot's environment
+all:
+	$(CC) $(CFLAGS) -o $(TARGET) writer.c $(LDFLAGS)
 
 clean:
-
-
+	rm -f $(TARGET) *.o
