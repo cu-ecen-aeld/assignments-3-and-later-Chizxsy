@@ -10,13 +10,29 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <pthread.h>
+#include <stdbool.h>
+#include <sys/queue.h>
+#include <time.h>
 
 #define PORT "9000"
 #define DATA_FILE "/var/tmp/aesdsocketdata"
 #define BUFFER_SIZE 1024
+#define TIME_INTERVAL 10
 
 int quit_sig = 0;
 int server_sockfd = -1;
+pthread_mutex_t data_file_mutex;
+
+// struct for thread id and coresponding data   
+struct thread_data{
+    pthread_t threadIDx;
+    int client_sockfd;
+    SLIST_ENTRY(thread_data) entries; // link struct to to linked list
+}
+
+// singly linked list head
+SLIST_HEAD(slisthead, thread_data) head;
 
 static void sighandler(int signo) {
     if (signo == SIGINT || signo == SIGTERM) {
@@ -47,6 +63,38 @@ void send_packet(int clientfd) {
 
     close(fd);
 }
+
+// time stamp handler
+void *timestamp(void *arg){
+    while(!quit_sig) {
+        if (quit_sig) break; //run timer while active
+
+        // get current time 
+        char timestamp_str [100];
+        time_t t = time(NULL);
+        struct tm *tmp = localtime(&t);
+
+        // format time for RFC 2822
+        strftime(timestamp_str, sizeof(timestamp_str), "timestamp:%a, %d %b %Y %H:%M:%S %z\n", tmp_time);
+
+        // lock mutex
+        pthread_mutex_lock(&data_file_mutex);
+        
+        // intert time stamp into file
+        FILE *data_file = fopen(DATA_FILE, "a+");
+        if (!data_file) {
+            syslog(LOG_ERR, "Failed to open file for time stamp");
+            
+            
+        } else {
+            fputs(timestamp_str, data_file);
+            fclose(data_file);
+        }
+        
+        // unlock mutex
+        pthread_mutex_unlock(&data_file_mutex);
+    }
+    return NULL;
 
 int main(int argc, char *argv[]) {
     struct addrinfo hints, *res, *p;
