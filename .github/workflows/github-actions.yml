@@ -5,27 +5,24 @@ on:
       - '*'
     branches:
       - '*'
-
 jobs:
   unit-test:
     container: cuaesd/aesd-autotest:24-unit-test
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v2
-        with:
-          submodules: false
-          fetch-depth: 0
+      - name: Checkout submodules
+        # The --recursive flag has been removed from this line
+        run: git submodule update --init
       - name: Run unit test
         run: ./unit-test.sh
-
   full-test:
-    container: cuaesd/aesd-autotest:24-assignment6
+    container: cuaesd/aesd-autotest:24-assignment7
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v2
-        with:
-          submodules: false
-          fetch-depth: 0
+      - name: Checkout submodules
+        # The --recursive flag has been removed from this line
+        run: git submodule update --init
       - name: Run full test
         run: ./full-test.sh
-
