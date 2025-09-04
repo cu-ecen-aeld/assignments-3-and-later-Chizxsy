@@ -18,20 +18,23 @@
 #define PORT "9000"
 #define DATA_FILE "/var/tmp/aesdsocketdata"
 #define BUFFER_SIZE 1024
-#define TIME_INTERVAL 10
+#define timestamp_interval 10
 
 int quit_sig = 0;
 int server_sockfd = -1;
 pthread_mutex_t data_file_mutex;
+pthread_t timer_thread;
 
 // struct for thread id and coresponding data   
 struct thread_data{
     pthread_t threadIDx;
     int client_sockfd;
     SLIST_ENTRY(thread_data) entries; // link struct to to linked list
-}
+    char client_ip[INET6_ADDRSTRLEN];
+    bool threadDone;
+};
 
-// singly linked list head
+// head of the signly linked list
 SLIST_HEAD(slisthead, thread_data) head;
 
 static void sighandler(int signo) {
@@ -65,17 +68,18 @@ void send_packet(int clientfd) {
 }
 
 // time stamp handler
-void *timestamp(void *arg){
+void* timestamp(void *arg){
     while(!quit_sig) {
+        sleep(timestamp_interval);
         if (quit_sig) break; //run timer while active
 
         // get current time 
         char timestamp_str [100];
         time_t t = time(NULL);
-        struct tm *tmp = localtime(&t);
+        struct tm *temp_time = localtime(&t);
 
         // format time for RFC 2822
-        strftime(timestamp_str, sizeof(timestamp_str), "timestamp:%a, %d %b %Y %H:%M:%S %z\n", tmp_time);
+        strftime(timestamp_str, sizeof(timestamp_str), "timestamp:%a, %d %b %Y %H:%M:%S %z\n", temp_time);
 
         // lock mutex
         pthread_mutex_lock(&data_file_mutex);
@@ -95,6 +99,59 @@ void *timestamp(void *arg){
         pthread_mutex_unlock(&data_file_mutex);
     }
     return NULL;
+}
+
+void* connection_handler(void* thread_param){
+        struct thread_data* data = (struct thread_data*)thread_param;
+        char buffer[BUFFER_SIZE];
+        ssize_t b_recv;
+        int newline_found = 0;
+
+        // receive buffer
+        char *recv_buffer = malloc(BUFFER_SIZE);
+        size_t current_buffer_size = 0;
+        size_t bigger_buffer = BUFFER_SIZE;
+
+        // dynamically allocate memory and resize buffer to avoid overflow
+        while((b_recv = recv(data->client_sockfd, buffer, sizeof(buffer), 0)) >0){
+            if(current_buffer_size + b_recv > bigger_buffer){
+                bigger_buffer *= 2;
+                recv_buffer = realloc(recv_buffer, bigger_buffer);
+            }
+            // copies
+            memcpy(recv_buffer + current_buffer_size, buffer, b_recv);
+            current_buffer_size += b_recv;
+
+            if (memchr(buffer, '\n', b_recv)){
+                newline_found = 1; 
+                break;
+            }
+        }
+
+        pthread_mutex_lock(&data_file_mutex);
+        FILE *data_file = fopen(DATA_FILE, "a+");
+        
+        if (data_file) {
+            fwrite(recv_buffer, 1, current_buffer_size, data_file);
+            fclose(data_file);
+        }
+        pthread_mutex_unlock(&data_file_mutex);
+
+        // free dynamically allocated buffer
+        free(recv_buffer);
+
+        // check for end of packet and send back file contents
+        if (newline_found) {
+            pthread_mutex_lock(&data_file_mutex);
+            send_packet(data->client_sockfd);
+            pthread_mutex_unlock(&data_file_mutex);
+        }
+        //clean up
+        close(data->client_sockfd);
+        syslog(LOG_INFO, "Closed connection from %s", data->client_ip);
+        data->threadDone = true; 
+        return 0;
+}
 
 int main(int argc, char *argv[]) {
     struct addrinfo hints, *res, *p;
@@ -103,10 +160,30 @@ int main(int argc, char *argv[]) {
     socklen_t client_addr_len;
     int client_sockfd;
     int status;
-    int daemon_mode = 0;
 
+    struct thread_data *node, *temp_node;
+
+    char ipstr[INET6_ADDRSTRLEN];
+
+    SLIST_INIT(&head);
+    pthread_mutex_init(&data_file_mutex, NULL);
+
+    // open aesdsocket log. journalctl -f | grep aesdsocket
+    openlog("aesdsocket", LOG_PID, LOG_USER);
+
+    // start timer thread
+    pthread_create(&timer_thread, NULL, timestamp, NULL);
+
+    // simplified daemon mode
     if (argc > 1 && strcmp(argv[1], "-d") == 0) {
-        daemon_mode = 1;
+        pid_t pid = fork();
+        if (pid < 0) return -1;
+        if (pid > 0) exit(EXIT_SUCCESS);
+        setsid();
+        chdir("/");
+        close(STDIN_FILENO);
+        close(STDOUT_FILENO);
+        close(STDERR_FILENO);
     }
 
     if (argc > 2) {
@@ -114,8 +191,7 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    openlog("aesdsocket", LOG_PID, LOG_USER);
-
+    // setup signal handler
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = sighandler;
     sigemptyset(&sa.sa_mask);
@@ -126,10 +202,12 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
+    // setup socket
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
+
 
     if ((status = getaddrinfo(NULL, PORT, &hints, &res)) != 0) {
         syslog(LOG_ERR, "getaddrinfo: %s", gai_strerror(status));
@@ -160,59 +238,69 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    if (daemon_mode) {
-        pid_t pid = fork();
-        if (pid < 0) return -1;
-        if (pid > 0) exit(EXIT_SUCCESS);
-        setsid();
-        chdir("/");
-        close(STDIN_FILENO);
-        close(STDOUT_FILENO);
-        close(STDERR_FILENO);
-    }
-
     while (!quit_sig) {
         client_addr_len = sizeof(client_addr);
         client_sockfd = accept(server_sockfd, (struct sockaddr *)&client_addr, &client_addr_len);
-        if (client_sockfd == -1) continue;
+        if (client_sockfd == -1) {
+            if (quit_sig){
+                break;
+            }
+            continue;
+        }
 
-        char ipstr[INET6_ADDRSTRLEN];
+        // create threads for each new connection
+        struct thread_data *new_connection = (struct thread_data*)malloc(sizeof(struct thread_data));
+        new_connection->client_sockfd = client_sockfd;
+        new_connection->threadDone = false;
+
         void *addr = (client_addr.ss_family == AF_INET)
             ? (void *)&((struct sockaddr_in *)&client_addr)->sin_addr
             : (void *)&((struct sockaddr_in6 *)&client_addr)->sin6_addr;
 
         inet_ntop(client_addr.ss_family, addr, ipstr, sizeof(ipstr));
+        strcpy(new_connection->client_ip, ipstr);
+
         syslog(LOG_INFO, "Accepted connection from %s", ipstr);
 
-        FILE *data_file = fopen(DATA_FILE, "a+");
-        if (!data_file) {
-            syslog(LOG_ERR, "Failed to open/create datafile");
-            close(client_sockfd);
-            continue;
-        }
+        // thread to handle new connections
+        pthread_create(&new_connection->threadIDx, NULL, connection_handler, new_connection);
 
-        char buffer[BUFFER_SIZE];
-        ssize_t b_recv;
-        int newline_found = 0;
-        while ((b_recv = recv(client_sockfd, buffer, sizeof(buffer), 0)) > 0) {
-            fwrite(buffer, 1, b_recv, data_file);
-            if (memchr(buffer, '\n', b_recv)) {
-                newline_found = 1;
-                break;
+        // add the newly created connection node to ll
+        SLIST_INSERT_HEAD(&head, new_connection, entries);
+
+        for (node = SLIST_FIRST(&head); node != NULL; node = temp_node) {
+        // store the next pointer before doing anything else
+        temp_node = SLIST_NEXT(node, entries);
+
+        if (node->threadDone) {
+            pthread_join(node->threadIDx, NULL);
+            SLIST_REMOVE(&head, node, thread_data, entries);
+            free(node);
+        }
+}
+
+        /*
+        SLIST_FOREACH_SAFE(node, &head, entries, temp_node) {
+            if (node->threadDone) {
+                pthread_join(node->threadIDx, NULL);
+                SLIST_REMOVE(&head, node, thread_data, entries);
+                free(node);
             }
         }
-
-        fclose(data_file);
-
-        if (newline_found) {
-            send_packet(client_sockfd);
-        }
-
-        close(client_sockfd);
-        syslog(LOG_INFO, "Closed connection from %s", ipstr);
+        */
     }
 
+    syslog(LOG_INFO, "Cleaning up threads...");
+    while (!SLIST_EMPTY(&head)) {
+        struct thread_data* node = SLIST_FIRST(&head);
+        pthread_join(node->threadIDx, NULL);
+        SLIST_REMOVE_HEAD(&head, entries);
+        free(node);
+    }
+    pthread_join(timer_thread, NULL);
+    // clean up
     close(server_sockfd);
+    pthread_mutex_destroy(&data_file_mutex);
     remove(DATA_FILE);
     closelog();
     return 0;
