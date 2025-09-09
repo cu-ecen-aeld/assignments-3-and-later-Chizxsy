@@ -1,7 +1,11 @@
-CFLAGS := -Wall -Werror -g
+CC ?= $(CROSS_COMPILE)gcc
 
-TARGET := aesdsocket
-SOURCE := aesdsocket.c
+CFLAGS ?= -Wall -Werror -g
+
+LDFLAGS ?= -lpthread -lrt
+
+TARGET ?= aesdsocket
+SOURCE ?= aesdsocket.c
 
 all: $(TARGET)
 
