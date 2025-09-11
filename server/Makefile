@@ -10,8 +10,7 @@ SOURCE ?= aesdsocket.c
 all: $(TARGET)
 
 $(TARGET): $(SOURCE)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SOURCE)
-
+	$(CC) $(CFLAGS) -o $(TARGET) $(SOURCE) $(LDFLAGS)
 
 clean:
 	rm -f $(TARGET)
