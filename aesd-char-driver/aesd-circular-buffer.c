@@ -11,11 +11,12 @@
 #ifdef __KERNEL__
 #include <linux/string.h>
 #else
+#ifdef __KERNEL__
 #include <string.h>
 #endif
 
 #include "aesd-circular-buffer.h"
-
+#include <syslog.h>
 /**
  * @param buffer the buffer to search for corresponding offset.  Any necessary locking must be performed by caller.
  * @param char_offset the position to search for in the buffer list, describing the zero referenced
@@ -26,13 +27,45 @@
  * @return the struct aesd_buffer_entry structure representing the position described by char_offset, or
  * NULL if this position is not available in the buffer (not enough data is written).
  */
+
+openlog("circular buffer", LOG_PID, LOG_USER);
+
 struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct aesd_circular_buffer *buffer,
             size_t char_offset, size_t *entry_offset_byte_rtn )
 {
-    /**
-    * TODO: implement per description
-    */
-    return NULL;
+	// check if the buffer is empty
+	if (buffer->in_offs == buffer->out_offs && !buffer->full){
+		syslog(LOG_INFO, "Buffer is empty");
+		return NULL;
+	}
+	
+	uint8_t i;
+	uint8_t curr_index = buffer->out_offs;
+	size_t  total_offset = 0;
+	
+	// loop from 0 to max write ops of 10
+	for (i=0; i<AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; i++){
+		struct aesd_buffer_entry *curr_entry = &buffer->entry[curr_index];
+		
+		// check if desired offset is in the current entry
+		if (char_offset < total_offset + curr_entry->size){
+			*entry_offset_byte_rtn = char_offset - total_offset;
+			return curr_entry;
+		}
+
+		// add entries size to total
+		total_offset += curr_entry->size;
+		
+		// increment current index and wrap around once max write operations is reached
+		curr_index = (curr_index + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+		syslog(LOG_INFO, "Current Index: %d", curr_index);
+
+		//check if index is equal to the offset and the buffer is not full
+		if (curr_index == buffer->out_offs && !buffer->full){
+			break;
+		}
+
+	return NULL;
 }
 
 /**
@@ -41,12 +74,39 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 * new start location.
 * Any necessary locking must be handled by the caller
 * Any memory referenced in @param add_entry must be allocated by and/or must have a lifetime managed by the caller.
+#ifdef __KERNEL__
 */
 void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
 {
-    /**
-    * TODO: implement per description
-    */
+	// check for null pointers
+	if (!buffer || !add_entry){
+		return NULL;
+	}
+
+	if (buffer->full){
+		if (buffer->entry[buffer->in_offs].buffptr != NULL){
+			#ifdef __KERNEL__
+				kfree(buffer->entry[buffer->in_offs].buffptr);
+			#else
+				free(buffer->entry[buffer->in_offs].buffptr);
+			#endif
+		}
+		
+		// increment buffer tail
+		buffer->out_offs = (buffer->out_offs + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+	}
+	
+	// add new entry to the head
+	buffer->entry[buffer->in_offs] = *add_entry;
+
+	// increment buffer head
+	buffer->in_offs = (buffer->in_offs + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+
+	// update full status
+	if (buffer->in_offs == buffer->out_offs){
+		buffer->full = true;
+	}
+
 }
 
 /**
