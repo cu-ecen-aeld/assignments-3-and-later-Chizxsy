@@ -6,32 +6,6 @@ on:
     branches:
       - '*'
 jobs:
-<<<<<<< HEAD
-  unit-test:
-    container: cuaesd/aesd-autotest:24-unit-test
-    runs-on: self-hosted
-    steps:
-      - name: Checkout repository and submodules
-        uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
-          fetch-depth: 0
-      # The manual 'run: git submodule update' step has been removed.
-      - name: Run unit test
-        run: ./unit-test.sh
-  full-test:
-    container: cuaesd/aesd-autotest:24-assignment7
-    runs-on: self-hosted
-    steps:
-      - name: Checkout repository and submodules
-        uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
-          fetch-depth: 0
-      # The manual 'run: git submodule update' step has been removed.
-      - name: Run full test
-        run: ./full-test.sh
-=======
     unit-test:
         container: cuaesd/aesd-autotest:24-unit-test
         runs-on: self-hosted
@@ -50,4 +24,3 @@ jobs:
             run : git submodule update --init --recursive
           - name: Run full test
             run: ./full-test.sh
->>>>>>> assignments-base/assignment7
