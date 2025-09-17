@@ -10,9 +10,13 @@
 
 #ifdef __KERNEL__
 #include <linux/string.h>
+#include <linux/init.h>
+#include <linux/slab.h>
+#include <linux/module.h>
 #else
-#ifdef __KERNEL__
 #include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
 #endif
 
 #include "aesd-circular-buffer.h"
@@ -28,7 +32,6 @@
  * NULL if this position is not available in the buffer (not enough data is written).
  */
 
-openlog("circular buffer", LOG_PID, LOG_USER);
 
 struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct aesd_circular_buffer *buffer,
             size_t char_offset, size_t *entry_offset_byte_rtn )
@@ -65,6 +68,8 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 			break;
 		}
 
+	}
+
 	return NULL;
 }
 
@@ -80,15 +85,15 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const s
 {
 	// check for null pointers
 	if (!buffer || !add_entry){
-		return NULL;
+		return;
 	}
 
 	if (buffer->full){
 		if (buffer->entry[buffer->in_offs].buffptr != NULL){
 			#ifdef __KERNEL__
-				kfree(buffer->entry[buffer->in_offs].buffptr);
+				kfree((void*)buffer->entry[buffer->in_offs].buffptr);
 			#else
-				free(buffer->entry[buffer->in_offs].buffptr);
+				//free((void*)buffer->entry[buffer->in_offs].buffptr);
 			#endif
 		}
 		
