@@ -41,7 +41,7 @@ static void sighandler(int signo) {
     if (signo == SIGINT || signo == SIGTERM) {
         syslog(LOG_INFO, "Caught signal, exiting");
         quit_sig = 1;
-        remove(DATA_FILE);
+       	//remove(DATA_FILE);
         if (server_sockfd != -1) {
             shutdown(server_sockfd, SHUT_RDWR);
         }
@@ -116,7 +116,7 @@ void* connection_handler(void* thread_param){
         while((b_recv = recv(data->client_sockfd, buffer, sizeof(buffer), 0)) >0){
             if(current_buffer_size + b_recv > bigger_buffer){
                 bigger_buffer *= 2;
-                recv_buffer = realloc(recv_buffer, bigger_buffer);
+		recv_buffer = realloc(recv_buffer, bigger_buffer);
             }
             // copies
             memcpy(recv_buffer + current_buffer_size, buffer, b_recv);
