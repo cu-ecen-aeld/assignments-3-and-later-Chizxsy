@@ -69,6 +69,13 @@ void send_packet(int clientfd) {
 
 // time stamp handler
 void* timestamp(void *arg){
+
+    // intert time stamp into file
+    FILE *data_file = fopen(DATA_FILE, "a+");
+    if (!data_file) {
+       	syslog(LOG_ERR, "Failed to open file for time stamp");
+     	return NULL;    
+    }
     while(!quit_sig) {
         sleep(timestamp_interval);
         if (quit_sig) break; //run timer while active
@@ -84,20 +91,14 @@ void* timestamp(void *arg){
         // lock mutex
         pthread_mutex_lock(&data_file_mutex);
         
-        // intert time stamp into file
-        FILE *data_file = fopen(DATA_FILE, "a+");
-        if (!data_file) {
-            syslog(LOG_ERR, "Failed to open file for time stamp");
-            
-            
-        } else {
-            fputs(timestamp_str, data_file);
-            fclose(data_file);
-        }
-        
+    	// write string to buffer	
+        fputs(timestamp_str, data_file);
+        fflush(data_file);
+
         // unlock mutex
         pthread_mutex_unlock(&data_file_mutex);
     }
+    fclose(data_file);
     return NULL;
 }
 
