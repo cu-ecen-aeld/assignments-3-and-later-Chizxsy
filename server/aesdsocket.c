@@ -16,9 +16,12 @@
 #include <time.h>
 
 #define PORT "9000"
-#define DATA_FILE "/var/tmp/aesdsocketdata"
+#define DATA_FILE_DIR "/var/tmp/aesdsocketdata"
 #define BUFFER_SIZE 1024
 #define timestamp_interval 10
+
+// global file pointer
+FILE *data_file = NULL;
 
 int quit_sig = 0;
 int server_sockfd = -1;
@@ -41,7 +44,6 @@ static void sighandler(int signo) {
     if (signo == SIGINT || signo == SIGTERM) {
         syslog(LOG_INFO, "Caught signal, exiting");
         quit_sig = 1;
-       	//remove(DATA_FILE);
         if (server_sockfd != -1) {
             shutdown(server_sockfd, SHUT_RDWR);
         }
@@ -49,33 +51,27 @@ static void sighandler(int signo) {
 }
 
 void send_packet(int clientfd) {
-    int fd = open(DATA_FILE, O_RDONLY);
-    if (fd == -1) {
-        syslog(LOG_ERR, "Failed to open file");
-        return;
-    }
+    // read from beginning of file
+    rewind(data_file);
 
     char buffer[BUFFER_SIZE];
     ssize_t b_read;
-    while ((b_read = read(fd, buffer, sizeof(buffer))) > 0) {
+    // mutexes here cause a dead lock since the connection handler handles locking
+    //pthread_mutex_lock(&data_file_mutex);
+
+    while ((b_read = fread(buffer, 1, sizeof(buffer), data_file)) > 0) {
         if (send(clientfd, buffer, b_read, 0) == -1) {
             syslog(LOG_ERR, "Failed to send packet");
             break;
         }
     }
+    //pthread_mutex_unlock(&data_file_mutex);
 
-    close(fd);
 }
 
 // time stamp handler
 void* timestamp(void *arg){
 
-    // intert time stamp into file
-    FILE *data_file = fopen(DATA_FILE, "a+");
-    if (!data_file) {
-       	syslog(LOG_ERR, "Failed to open file for time stamp");
-     	return NULL;    
-    }
     while(!quit_sig) {
         sleep(timestamp_interval);
         if (quit_sig) break; //run timer while active
@@ -98,7 +94,6 @@ void* timestamp(void *arg){
         // unlock mutex
         pthread_mutex_unlock(&data_file_mutex);
     }
-    fclose(data_file);
     return NULL;
 }
 
@@ -130,12 +125,10 @@ void* connection_handler(void* thread_param){
         }
 
         pthread_mutex_lock(&data_file_mutex);
-        FILE *data_file = fopen(DATA_FILE, "a+");
+       
+        fwrite(recv_buffer, 1, current_buffer_size, data_file);
+        fflush(data_file); 
         
-        if (data_file) {
-            fwrite(recv_buffer, 1, current_buffer_size, data_file);
-            fclose(data_file);
-        }
         pthread_mutex_unlock(&data_file_mutex);
 
         // free dynamically allocated buffer
@@ -171,9 +164,6 @@ int main(int argc, char *argv[]) {
 
     // open aesdsocket log. journalctl -f | grep aesdsocket
     openlog("aesdsocket", LOG_PID, LOG_USER);
-
-    // start timer thread
-    pthread_create(&timer_thread, NULL, timestamp, NULL);
 
     // simplified daemon mode
     if (argc > 1 && strcmp(argv[1], "-d") == 0) {
@@ -239,6 +229,16 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
+    // open the aesdsocket file. creates one if missing
+    data_file = fopen(DATA_FILE_DIR, "w+");
+    if (data_file == NULL){
+	    syslog(LOG_ERR, "Failed to open global data file");
+	    return -1;
+    }
+
+    // start timer thread
+    pthread_create(&timer_thread, NULL, timestamp, NULL);
+
     while (!quit_sig) {
         client_addr_len = sizeof(client_addr);
         client_sockfd = accept(server_sockfd, (struct sockaddr *)&client_addr, &client_addr_len);
@@ -300,9 +300,10 @@ int main(int argc, char *argv[]) {
     }
     pthread_join(timer_thread, NULL);
     // clean up
+    fclose(data_file);
+    remove(DATA_FILE_DIR);
     close(server_sockfd);
     pthread_mutex_destroy(&data_file_mutex);
-    remove(DATA_FILE);
     closelog();
     return 0;
 }
