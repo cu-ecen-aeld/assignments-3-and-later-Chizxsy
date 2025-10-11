@@ -15,8 +15,13 @@
 #include <sys/queue.h>
 #include <time.h>
 
-#define PORT "9000"
+#ifndef USE_AESD_CHAR_DEVICE
 #define DATA_FILE_DIR "/var/tmp/aesdsocketdata"
+#else
+#define DATA_FILE_DIR "/dev/aesdchar"
+#endif
+
+#define PORT "9000"
 #define BUFFER_SIZE 1024
 #define timestamp_interval 10
 
