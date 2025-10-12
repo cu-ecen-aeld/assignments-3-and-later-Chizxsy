@@ -76,15 +76,18 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 
     // lock before read
     // can be interrupted by sig
-    mutex_lock_interruptable(&dev->lock);
+    if (mutex_lock_interruptable(&dev->lock)){
+        retval = -ERESTARTSYS;
+        goto out;
+    }
 
-    entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->buffer, *f_pos, &entry_count);
-
-    // if position is beyond the EOF
-    if (entry_count == NULL){
+    // nothing to read
+    if (count == NULL){
         retval = 0;
         goto out;
     }
+
+    entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->buffer, *f_pos, &entry_count);
 
     // determine bytes to read from count and entry size
     size_t bytes_to_read = entry->size - entry_count;
@@ -92,12 +95,12 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
         bytes_to_read = count;
     }
     
-    // copy to user
-    if (copy_to_user(buf, entry->buffptr + entry_count, bytes_to_read)){
+    // copy to user space
+    if (copy_to_user(buf, work_entry->buffptr + entry_count, bytes_to_read)){
         retval = -EFAULT;
         goto out;
     }
-    
+
     *f_pos += bytes_to_read;
     retval = bytes_to_read;
 
@@ -111,11 +114,56 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
     ssize_t retval = -ENOMEM;
+    const char *newline_ptr = NULL;
+    struct aesd_dev *dev = filp->private_data;
+    
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
     /**
      * TODO: handle write
      */
 
+    if (mutex_lock_interruptable(&dev->lock)){
+        retval = -ERESTARTSYS;
+        goto out;
+    }
+
+    if (count == 0){
+        retval = 0;
+        goto out;
+    }
+
+    // kmalloc any length of write request
+    if (dev->work_entry.size == 0){
+        dev->work_entry.buffptr = kmalloc(count, GFP_KERNEL);
+    } else {
+        // if there is already data in the buffer entry
+        dev->work_entry.buffptr = krealloc(dev->work_entry.buffptr, dev->work_entry.size + count, GFP_KERNEL);   
+    }
+
+    if (!dev->work_entry.buffptr){
+        goto out;
+    }
+
+    // copy to user space
+    if (copy_to_user((void *)(dev->work_entry.buffptr + dev->work_entry.size), buf, count)){
+        retval = -EFAULT;
+        goto out;
+    }
+    // increment working buffer size
+    dev->work_entry.size += count;
+
+    // search memory for a new line
+    if ((memchr(dev->work_entry.buffptr, '\n', dev->work_entry.size)) != NULL){
+        // add entry to buffer
+        aesd_circular_buffer_add_entry(&dev->buffer, (const struct aesd_char_device)&dev->work_entry);
+        dev->work_entry.buffptr == NULL;
+        dev->work_entry.size = 0;
+    }
+    retval = count;
+    *f_pos = count;
+    
+out:
+    mutex_unlock(&dev->lock);
     return retval;
 }
 struct file_operations aesd_fops = {
