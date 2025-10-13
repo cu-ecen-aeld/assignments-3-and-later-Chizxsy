@@ -55,6 +55,7 @@ void* timestamp(void *arg){
 // replaces a thread function call with void
 #define start_timer() ((void)0)
 #define join_timer() ((void)0)
+#define remove_data_file() ((void)0)
 
 #endif
 
