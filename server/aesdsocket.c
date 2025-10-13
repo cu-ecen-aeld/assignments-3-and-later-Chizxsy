@@ -82,6 +82,7 @@ void* timestamp(void *arg){
 
 // global file pointer
 FILE *data_file = NULL;
+pthread_mutex_t init_data_file_mutex;
 
 int quit_sig = 0;
 int server_sockfd = -1;
@@ -138,6 +139,18 @@ void* connection_handler(void* thread_param){
         char *recv_buffer = malloc(BUFFER_SIZE);
         size_t current_buffer_size = 0;
         size_t bigger_buffer = BUFFER_SIZE;
+
+        pthread_mutex_lock(&init_data_file_mutex);
+
+        // open the aesdsocket file. creates one if missing
+        data_file = fopen(DATA_FILE_DIR, "w+");
+        if (data_file == NULL){
+            syslog(LOG_ERR, "Failed to open global data file");
+            return -1;
+        }
+
+        pthread_mutex_unlock(&init_data_file_mutex);
+
 
         // dynamically allocate memory and resize buffer to avoid overflow
         while((b_recv = recv(data->client_sockfd, buffer, sizeof(buffer), 0)) >0){
@@ -258,13 +271,6 @@ int main(int argc, char *argv[]) {
         syslog(LOG_ERR, "Failed to listen");
         close(server_sockfd);
         return -1;
-    }
-
-    // open the aesdsocket file. creates one if missing
-    data_file = fopen(DATA_FILE_DIR, "w+");
-    if (data_file == NULL){
-	    syslog(LOG_ERR, "Failed to open global data file");
-	    return -1;
     }
 
     start_timer();
