@@ -16,6 +16,10 @@ void join_timer(){
     pthread_join(timer_thread, NULL);
 }
 
+void remove_data_file(){
+    remove(DATA_FILE_DIR);
+}
+
 // time stamp handler
 void* timestamp(void *arg){
 
@@ -44,8 +48,6 @@ void* timestamp(void *arg){
     return NULL;
 }
 
-
-
 #else
 
 #define DATA_FILE_DIR "/dev/aesdchar"
@@ -73,8 +75,6 @@ void* timestamp(void *arg){
 #include <pthread.h>
 #include <stdbool.h>
 #include <sys/queue.h>
-
-
 
 #define PORT "9000"
 #define BUFFER_SIZE 1024
@@ -330,7 +330,7 @@ int main(int argc, char *argv[]) {
     // clean up
     join_timer();
     fclose(data_file);
-    remove(DATA_FILE_DIR);
+    remove_data_file();
     close(server_sockfd);
     pthread_mutex_destroy(&data_file_mutex);
     closelog();
