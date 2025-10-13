@@ -1,7 +1,35 @@
+#include <time.h>
+#include <pthread.h>
+#include <syslog.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <signal.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <sys/queue.h>
+
+#define PORT "9000"
+#define BUFFER_SIZE 1024
+
+// global file pointer
+FILE *data_file = NULL;
+pthread_mutex_t init_data_file_mutex;
+
+int quit_sig = 0;
+int server_sockfd = -1;
+pthread_mutex_t data_file_mutex;
+
+void* timestamp(void *arg);
+
 //----- AESD CHAR DEV Block -----
 #ifndef USE_AESD_CHAR_DEVICE
-
-#include <time.h>
 
 #define DATA_FILE_DIR "/var/tmp/aesdsocketdata"
 #define timestamp_interval 10
@@ -60,33 +88,6 @@ void* timestamp(void *arg){
 #endif
 
 //----- End Block -----
-
-#include <syslog.h>
-#include <stdio.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <signal.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <pthread.h>
-#include <stdbool.h>
-#include <sys/queue.h>
-
-#define PORT "9000"
-#define BUFFER_SIZE 1024
-
-// global file pointer
-FILE *data_file = NULL;
-pthread_mutex_t init_data_file_mutex;
-
-int quit_sig = 0;
-int server_sockfd = -1;
-pthread_mutex_t data_file_mutex;
 
 // struct for thread id and coresponding data   
 struct thread_data{
@@ -147,7 +148,8 @@ void* connection_handler(void* thread_param){
             data_file = fopen(DATA_FILE_DIR, "w+");
             if (data_file == NULL){
                 syslog(LOG_ERR, "Failed to open global data file");
-                return -1;
+                pthread_mutex_unlock(&init_data_file_mutex);
+                return NULL;
             }
     
         }
@@ -206,6 +208,7 @@ int main(int argc, char *argv[]) {
 
     SLIST_INIT(&head);
     pthread_mutex_init(&data_file_mutex, NULL);
+    pthread_mutex_init(&init_data_file_mutex, NULL);
 
     // open aesdsocket log. journalctl -f | grep aesdsocket
     openlog("aesdsocket", LOG_PID, LOG_USER);
@@ -243,7 +246,6 @@ int main(int argc, char *argv[]) {
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
-
 
     if ((status = getaddrinfo(NULL, PORT, &hints, &res)) != 0) {
         syslog(LOG_ERR, "getaddrinfo: %s", gai_strerror(status));
@@ -337,10 +339,13 @@ int main(int argc, char *argv[]) {
     }
     // clean up
     join_timer();
-    fclose(data_file);
+    if (data_file != NULL) {
+        fclose(data_file);
+    }
     remove_data_file();
     close(server_sockfd);
     pthread_mutex_destroy(&data_file_mutex);
+    pthread_mutex_destroy(&init_data_file_mutex);
     closelog();
     return 0;
 }
