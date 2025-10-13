@@ -143,14 +143,15 @@ void* connection_handler(void* thread_param){
         pthread_mutex_lock(&init_data_file_mutex);
 
         // open the aesdsocket file. creates one if missing
-        data_file = fopen(DATA_FILE_DIR, "w+");
-        if (data_file == NULL){
-            syslog(LOG_ERR, "Failed to open global data file");
-            return -1;
+        if (data_file == NULL) {
+            data_file = fopen(DATA_FILE_DIR, "w+");
+            if (data_file == NULL){
+                syslog(LOG_ERR, "Failed to open global data file");
+                return -1;
+            }
+    
         }
-
         pthread_mutex_unlock(&init_data_file_mutex);
-
 
         // dynamically allocate memory and resize buffer to avoid overflow
         while((b_recv = recv(data->client_sockfd, buffer, sizeof(buffer), 0)) >0){
