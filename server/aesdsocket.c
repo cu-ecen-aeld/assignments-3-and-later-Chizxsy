@@ -1,3 +1,63 @@
+//----- AESD CHAR DEV Block -----
+#ifndef USE_AESD_CHAR_DEVICE
+
+#include <time.h>
+
+#define DATA_FILE_DIR "/var/tmp/aesdsocketdata"
+#define timestamp_interval 10
+
+pthread_t timer_thread;
+
+void start_timer(){
+    // start timer thread
+    pthread_create(&timer_thread, NULL, timestamp, NULL);
+}
+void join_timer(){
+    pthread_join(timer_thread, NULL);
+}
+
+// time stamp handler
+void* timestamp(void *arg){
+
+    while(!quit_sig) {
+        sleep(timestamp_interval);
+        if (quit_sig) break; //run timer while active
+
+        // get current time 
+        char timestamp_str [100];
+        time_t t = time(NULL);
+        struct tm *temp_time = localtime(&t);
+
+        // format time for RFC 2822
+        strftime(timestamp_str, sizeof(timestamp_str), "timestamp:%a, %d %b %Y %H:%M:%S %z\n", temp_time);
+
+        // lock mutex
+        pthread_mutex_lock(&data_file_mutex);
+        
+    	// write string to buffer	
+        fputs(timestamp_str, data_file);
+        fflush(data_file);
+
+        // unlock mutex
+        pthread_mutex_unlock(&data_file_mutex);
+    }
+    return NULL;
+}
+
+
+
+#else
+
+#define DATA_FILE_DIR "/dev/aesdchar"
+
+// replaces a thread function call with void
+#define start_timer() ((void)0)
+#define join_timer() ((void)0)
+
+#endif
+
+//----- End Block -----
+
 #include <syslog.h>
 #include <stdio.h>
 #include <string.h>
@@ -13,17 +73,11 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <sys/queue.h>
-#include <time.h>
 
-#ifndef USE_AESD_CHAR_DEVICE
-#define DATA_FILE_DIR "/var/tmp/aesdsocketdata"
-#else
-#define DATA_FILE_DIR "/dev/aesdchar"
-#endif
+
 
 #define PORT "9000"
 #define BUFFER_SIZE 1024
-#define timestamp_interval 10
 
 // global file pointer
 FILE *data_file = NULL;
@@ -31,7 +85,6 @@ FILE *data_file = NULL;
 int quit_sig = 0;
 int server_sockfd = -1;
 pthread_mutex_t data_file_mutex;
-pthread_t timer_thread;
 
 // struct for thread id and coresponding data   
 struct thread_data{
@@ -72,34 +125,6 @@ void send_packet(int clientfd) {
     }
     //pthread_mutex_unlock(&data_file_mutex);
 
-}
-
-// time stamp handler
-void* timestamp(void *arg){
-
-    while(!quit_sig) {
-        sleep(timestamp_interval);
-        if (quit_sig) break; //run timer while active
-
-        // get current time 
-        char timestamp_str [100];
-        time_t t = time(NULL);
-        struct tm *temp_time = localtime(&t);
-
-        // format time for RFC 2822
-        strftime(timestamp_str, sizeof(timestamp_str), "timestamp:%a, %d %b %Y %H:%M:%S %z\n", temp_time);
-
-        // lock mutex
-        pthread_mutex_lock(&data_file_mutex);
-        
-    	// write string to buffer	
-        fputs(timestamp_str, data_file);
-        fflush(data_file);
-
-        // unlock mutex
-        pthread_mutex_unlock(&data_file_mutex);
-    }
-    return NULL;
 }
 
 void* connection_handler(void* thread_param){
@@ -241,8 +266,7 @@ int main(int argc, char *argv[]) {
 	    return -1;
     }
 
-    // start timer thread
-    pthread_create(&timer_thread, NULL, timestamp, NULL);
+    start_timer();
 
     while (!quit_sig) {
         client_addr_len = sizeof(client_addr);
@@ -303,8 +327,8 @@ int main(int argc, char *argv[]) {
         SLIST_REMOVE_HEAD(&head, entries);
         free(node);
     }
-    pthread_join(timer_thread, NULL);
     // clean up
+    join_timer();
     fclose(data_file);
     remove(DATA_FILE_DIR);
     close(server_sockfd);
