@@ -117,8 +117,9 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
     ssize_t retval = -ENOMEM;
-    const char *newline_ptr = NULL;
     struct aesd_dev *dev = filp->private_data;
+    const char* overflow_buffptr = NULL;
+
     
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
     /**
@@ -159,7 +160,11 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     if ((memchr(dev->work_entry.buffptr, '\n', dev->work_entry.size)) != NULL){
         // add entry to buffer
         // memory leak
-        aesd_circular_buffer_add_entry(&dev->buffer, (const struct aesd_char_device)&dev->work_entry);
+        overflow_buffptr = aesd_circular_buffer_add_entry(&dev->buffer, &dev->work_entry);
+        if(overflow_buffptr != NULL){
+            kfree(overflow_buffptr);
+        }
+
         dev->work_entry.buffptr = NULL;
         dev->work_entry.size = 0;
     }
@@ -197,8 +202,7 @@ int aesd_init_module(void)
 {
     dev_t dev = 0;
     int result;
-    result = alloc_chrdev_region(&dev, aesd_minor, 1,
-            "aesdchar");
+    result = alloc_chrdev_region(&dev, aesd_minor, 1, "aesdchar");
     aesd_major = MAJOR(dev);
     if (result < 0) {
         printk(KERN_WARNING "Can't get major %d\n", aesd_major);
@@ -212,7 +216,7 @@ int aesd_init_module(void)
 
     // init mutex
     mutex_init(&aesd_device.lock);
-    aesd_circular_buffer_init(&aesd_device.buffer)
+    aesd_circular_buffer_init(&aesd_device.buffer);
     
     result = aesd_setup_cdev(&aesd_device);
 
@@ -226,6 +230,10 @@ int aesd_init_module(void)
 
 void aesd_cleanup_module(void)
 {
+    uint8_t index;
+    struct aesd_buffer_entry *entry;
+    entry
+
     dev_t devno = MKDEV(aesd_major, aesd_minor);
 
     cdev_del(&aesd_device.cdev);
@@ -246,7 +254,7 @@ void aesd_cleanup_module(void)
      }
 
      // destroy mutex
-     mutex_destory(&aesd_device.lock);
+     mutex_destroy(&aesd_device.lock);
 
     unregister_chrdev_region(devno, 1);
 }
