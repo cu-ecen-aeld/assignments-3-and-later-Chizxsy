@@ -13,6 +13,7 @@
 #include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/module.h>
+#include <linux/printk.h>
 #else
 #include <string.h>
 #include <stdlib.h>
@@ -20,7 +21,6 @@
 #endif
 
 #include "aesd-circular-buffer.h"
-#include <syslog.h>
 /**
  * @param buffer the buffer to search for corresponding offset.  Any necessary locking must be performed by caller.
  * @param char_offset the position to search for in the buffer list, describing the zero referenced
@@ -38,7 +38,7 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 {
 	// check if the buffer is empty
 	if (buffer->in_offs == buffer->out_offs && !buffer->full){
-		syslog(LOG_INFO, "Buffer is empty");
+		printk(KERN_INFO "Buffer is empty\n");
 		return NULL;
 	}
 	
@@ -61,7 +61,7 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 		
 		// increment current index and wrap around once max write operations is reached
 		curr_index = (curr_index + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
-		syslog(LOG_INFO, "Current Index: %d", curr_index);
+		printk(KERN_INFO "Current Index: %d\n", curr_index);
 
 		//check if index is equal to the offset and the buffer is not full
 		if (curr_index == buffer->out_offs && !buffer->full){

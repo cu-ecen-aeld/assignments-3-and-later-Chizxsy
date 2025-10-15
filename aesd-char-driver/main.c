@@ -18,6 +18,7 @@
 #include <linux/cdev.h>
 #include <linux/fs.h> // file_operations
 #include "aesdchar.h"
+#include "aesd-circular-buffer.h"
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
@@ -76,7 +77,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 
     // lock before read
     // can be interrupted by sig
-    if (mutex_lock_interruptable(&dev->lock)){
+    if (mutex_lock_interruptible(&dev->lock)){
         retval = -ERESTARTSYS;
         goto out;
     }
@@ -118,7 +119,6 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 {
     ssize_t retval = -ENOMEM;
     struct aesd_dev *dev = filp->private_data;
-    const char* overflow_buffptr = NULL;
 
     
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
@@ -126,7 +126,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
      * TODO: handle write
      */
 
-    if (mutex_lock_interruptable(&dev->lock)){
+    if (mutex_lock_interruptible(&dev->lock)){
         retval = -ERESTARTSYS;
         goto out;
     }
@@ -160,10 +160,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     if ((memchr(dev->work_entry.buffptr, '\n', dev->work_entry.size)) != NULL){
         // add entry to buffer
         // memory leak
-        overflow_buffptr = aesd_circular_buffer_add_entry(&dev->buffer, &dev->work_entry);
-        if(overflow_buffptr != NULL){
-            kfree(overflow_buffptr);
-        }
+        aesd_circular_buffer_add_entry(&dev->buffer, &dev->work_entry);
 
         dev->work_entry.buffptr = NULL;
         dev->work_entry.size = 0;
@@ -232,7 +229,6 @@ void aesd_cleanup_module(void)
 {
     uint8_t index;
     struct aesd_buffer_entry *entry;
-    entry
 
     dev_t devno = MKDEV(aesd_major, aesd_minor);
 
