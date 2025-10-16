@@ -145,7 +145,7 @@ void* connection_handler(void* thread_param){
 
         // open the aesdsocket file. creates one if missing
         if (data_file == NULL) {
-            data_file = fopen(DATA_FILE_DIR, "w+");
+            data_file = fopen(DATA_FILE_DIR, "a");
             if (data_file == NULL){
                 syslog(LOG_ERR, "Failed to open global data file");
                 pthread_mutex_unlock(&init_data_file_mutex);
