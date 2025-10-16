@@ -18,10 +18,6 @@
 #define PORT "9000"
 #define BUFFER_SIZE 1024
 
-// global file pointer
-FILE *data_file = NULL;
-pthread_mutex_t init_data_file_mutex;
-
 int quit_sig = 0;
 int server_sockfd = -1;
 pthread_mutex_t data_file_mutex;
@@ -63,14 +59,13 @@ void* timestamp(void *arg){
         // format time for RFC 2822
         strftime(timestamp_str, sizeof(timestamp_str), "timestamp:%a, %d %b %Y %H:%M:%S %z\n", temp_time);
 
-        // lock mutex
         pthread_mutex_lock(&data_file_mutex);
-        
-    	// write string to buffer	
-        fputs(timestamp_str, data_file);
-        fflush(data_file);
 
-        // unlock mutex
+        int fd = open(DATA_FILE_DIR, O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (fd != -1) {
+            write(fd, timestamp_str, strlen(timestamp_str));
+            close(fd);
+        }
         pthread_mutex_unlock(&data_file_mutex);
     }
     return NULL;
@@ -120,14 +115,20 @@ void send_packet(int clientfd) {
     // mutexes here cause a dead lock since the connection handler handles locking
     //pthread_mutex_lock(&data_file_mutex);
 
-    while ((b_read = fread(buffer, 1, sizeof(buffer), data_file)) > 0) {
+    int fd = open(DATA_FILE_DIR, O_RDONLY);
+    if (fd == -1) {
+        syslog(LOG_ERR, "Failed to open data file for reading");
+        return;
+    }
+
+    while ((b_read = read(fd, buffer, sizeof(buffer))) > 0) {
         if (send(clientfd, buffer, b_read, 0) == -1) {
             syslog(LOG_ERR, "Failed to send packet");
             break;
         }
     }
     //pthread_mutex_unlock(&data_file_mutex);
-
+    close(fd);
 }
 
 void* connection_handler(void* thread_param){
@@ -140,20 +141,6 @@ void* connection_handler(void* thread_param){
         char *recv_buffer = malloc(BUFFER_SIZE);
         size_t current_buffer_size = 0;
         size_t bigger_buffer = BUFFER_SIZE;
-
-        pthread_mutex_lock(&init_data_file_mutex);
-
-        // open the aesdsocket file. creates one if missing
-        if (data_file == NULL) {
-            data_file = fopen(DATA_FILE_DIR, "a");
-            if (data_file == NULL){
-                syslog(LOG_ERR, "Failed to open global data file");
-                pthread_mutex_unlock(&init_data_file_mutex);
-                return NULL;
-            }
-    
-        }
-        pthread_mutex_unlock(&init_data_file_mutex);
 
         // dynamically allocate memory and resize buffer to avoid overflow
         while((b_recv = recv(data->client_sockfd, buffer, sizeof(buffer), 0)) >0){
@@ -172,10 +159,20 @@ void* connection_handler(void* thread_param){
         }
 
         pthread_mutex_lock(&data_file_mutex);
-       
-        fwrite(recv_buffer, 1, current_buffer_size, data_file);
-        fflush(data_file); 
-        
+
+        int fd = open(DATA_FILE_DIR, O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (fd == -1) {
+            syslog(LOG_ERR, "Failed to open data file for writing");
+            pthread_mutex_unlock(&data_file_mutex);
+            free(recv_buffer); 
+            // handle thread cleanup
+            data->threadDone = true;
+            return NULL;
+        }
+
+        write(fd, recv_buffer, current_buffer_size);
+        close(fd);
+
         pthread_mutex_unlock(&data_file_mutex);
 
         // free dynamically allocated buffer
@@ -183,9 +180,7 @@ void* connection_handler(void* thread_param){
 
         // check for end of packet and send back file contents
         if (newline_found) {
-            pthread_mutex_lock(&data_file_mutex);
             send_packet(data->client_sockfd);
-            pthread_mutex_unlock(&data_file_mutex);
         }
         //clean up
         close(data->client_sockfd);
@@ -208,7 +203,6 @@ int main(int argc, char *argv[]) {
 
     SLIST_INIT(&head);
     pthread_mutex_init(&data_file_mutex, NULL);
-    pthread_mutex_init(&init_data_file_mutex, NULL);
 
     // open aesdsocket log. journalctl -f | grep aesdsocket
     openlog("aesdsocket", LOG_PID, LOG_USER);
@@ -339,13 +333,9 @@ int main(int argc, char *argv[]) {
     }
     // clean up
     join_timer();
-    if (data_file != NULL) {
-        fclose(data_file);
-    }
     remove_data_file();
     close(server_sockfd);
     pthread_mutex_destroy(&data_file_mutex);
-    pthread_mutex_destroy(&init_data_file_mutex);
     closelog();
     return 0;
 }
