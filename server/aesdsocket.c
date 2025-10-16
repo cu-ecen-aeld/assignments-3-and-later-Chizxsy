@@ -18,6 +18,7 @@
 #define PORT "9000"
 #define BUFFER_SIZE 1024
 
+
 int quit_sig = 0;
 int server_sockfd = -1;
 pthread_mutex_t data_file_mutex;
@@ -107,9 +108,7 @@ static void sighandler(int signo) {
 }
 
 void send_packet(int clientfd) {
-    // read from beginning of file
-    rewind(data_file);
-
+    
     char buffer[BUFFER_SIZE];
     ssize_t b_read;
     // mutexes here cause a dead lock since the connection handler handles locking
