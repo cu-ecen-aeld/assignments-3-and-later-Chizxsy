@@ -221,7 +221,7 @@ loff_t aesd_llseek(struct file *filp, loff_t off, int whence){
     return newpos;
 }
 
-long aesd_ioctl(stuct file *filp, unsigned int cmd, unsigned long arg){
+long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
     struct aesd_device *dev = filp->private_data;
     struct aesd_seekto seekto;
     long retval = 0;
@@ -246,7 +246,7 @@ long aesd_ioctl(stuct file *filp, unsigned int cmd, unsigned long arg){
 
             // check if the seek to command is with in the supported write operations
             if (seekto.write_cmd >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED){
-                return -EINVAL;
+                retval -EINVAL;
                 goto out;
             }
             // check if seek is out of bounds
@@ -266,7 +266,7 @@ long aesd_ioctl(stuct file *filp, unsigned int cmd, unsigned long arg){
             for (uint8_t i = 0; i < seekto.write_cmd; i++){
                 // ring buffer output offset + command. Modulus handles wrapping. i.e. 10 mod 10 = 0. 11 mod 10 = 1
                 index = (dev->buffer.out_offs + i) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
-                newpos += dev->buffer.entry[i].size;
+                newpos += dev->buffer.entry[index].size;
             }
             
             newpos += seekto.write_cmd_offset;
@@ -274,9 +274,7 @@ long aesd_ioctl(stuct file *filp, unsigned int cmd, unsigned long arg){
             // update new positon in file 
             filp->f_pos = newpos;
 
-            break;
-
-
+            break:
 
         default: 
             return -ENOTTY;
