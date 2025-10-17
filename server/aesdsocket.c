@@ -14,10 +14,13 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <sys/queue.h>
+#include "aesd_ioctl.h"
 
 #define PORT "9000"
 #define BUFFER_SIZE 1024
 
+
+struct aesd_seekto seekto = {0, 0};
 
 int quit_sig = 0;
 int server_sockfd = -1;
@@ -107,27 +110,18 @@ static void sighandler(int signo) {
     }
 }
 
-void send_packet(int clientfd) {
+void send_packet(int clientfd, int datafd) {
     
     char buffer[BUFFER_SIZE];
     ssize_t b_read;
-    // mutexes here cause a dead lock since the connection handler handles locking
-    //pthread_mutex_lock(&data_file_mutex);
-
-    int fd = open(DATA_FILE_DIR, O_RDONLY);
-    if (fd == -1) {
-        syslog(LOG_ERR, "Failed to open data file for reading");
-        return;
-    }
-
-    while ((b_read = read(fd, buffer, sizeof(buffer))) > 0) {
+ 
+    while ((b_read = read(datafd, buffer, sizeof(buffer))) > 0) {
         if (send(clientfd, buffer, b_read, 0) == -1) {
             syslog(LOG_ERR, "Failed to send packet");
             break;
         }
     }
-    //pthread_mutex_unlock(&data_file_mutex);
-    close(fd);
+
 }
 
 void* connection_handler(void* thread_param){
@@ -159,7 +153,7 @@ void* connection_handler(void* thread_param){
 
         pthread_mutex_lock(&data_file_mutex);
 
-        int fd = open(DATA_FILE_DIR, O_WRONLY | O_CREAT | O_APPEND, 0644);
+        int fd = open(DATA_FILE_DIR, O_RDWR | O_CREAT, 0644);
         if (fd == -1) {
             syslog(LOG_ERR, "Failed to open data file for writing");
             pthread_mutex_unlock(&data_file_mutex);
@@ -169,7 +163,28 @@ void* connection_handler(void* thread_param){
             return NULL;
         }
 
+        const char* ioctl_cmd_str = "AESDCHAR_IOCSEEKTO:";
+        if (strncmp(recv_buffer, ioctl_cmd_str, strlen(ioctl_cmd_str)) == 0){
+            struct aesd_seekto seekto;
+            sscanf(recv_buffer, "AESDCHAR_IOCSEEKTO:%u,%u", &seekto.write_cmd, &seekto.write_cmd_offset);
+
+            if (ioctl(fd, AESDCHAR_IOCSEEKTO, &seekto) != 0){
+                syslog(LOG_ERR, "Failed to open ioclt");
+            } 
+        } else {
+            // standard write using lseek
+            if (write(fd, recv_buffer, current_buffer_size) == -1){
+                syslog(LOG_ERR, "Write falied");
+            }
+            // read entire file back
+            if (lseek(fd, 0, SEEK_SET) == -1){
+                syslog(LOG_ERR, "lseek failed");
+            }
+        }  
+        
+        /*
         write(fd, recv_buffer, current_buffer_size);
+        */
         close(fd);
 
         pthread_mutex_unlock(&data_file_mutex);
@@ -179,7 +194,7 @@ void* connection_handler(void* thread_param){
 
         // check for end of packet and send back file contents
         if (newline_found) {
-            send_packet(data->client_sockfd);
+            send_packet(data->client_sockfd, fd);
         }
         //clean up
         close(data->client_sockfd);

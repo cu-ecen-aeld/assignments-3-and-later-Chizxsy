@@ -26,6 +26,7 @@ int aesd_minor =   0;
 MODULE_AUTHOR("Charlie Fischer"); /** TODO: fill in your name **/
 MODULE_LICENSE("Dual BSD/GPL");
 
+
 struct aesd_dev aesd_device;
 
 int aesd_open(struct inode *inode, struct file *filp)
@@ -175,7 +176,7 @@ out:
 // ----- IOCTL -----
 loff_t aesd_llseek(struct file *filp, loff_t off, int whence){
     // scull device
-    struct aesd_device *dev = filp->private_data;
+    struct aesd_dev *dev = filp->private_data;
     struct aesd_buffer_entry *entry;
     loff_t newpos;
     int index;
@@ -222,15 +223,14 @@ loff_t aesd_llseek(struct file *filp, loff_t off, int whence){
 }
 
 long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
-    struct aesd_device *dev = filp->private_data;
+    struct aesd_dev *dev = filp->private_data;
     struct aesd_seekto seekto;
     long retval = 0;
     uint8_t index;
     //loff_t newpos;
     size_t newpos = 0;
 
-    // checks if the ioctl command is valid. From Google Gemini:
-    if (_IOC_TYPE(cmd) != AESD_IOC_MAGIC || _IOC_NR(cmd) > AESD_IOC_MAXNR) {
+    if (_IOC_TYPE(cmd) != AESD_IOC_MAGIC || _IOC_NR(cmd) > 1) {
         return -ENOTTY;
     }
 
@@ -246,17 +246,17 @@ long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 
             // check if the seek to command is with in the supported write operations
             if (seekto.write_cmd >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED){
-                retval -EINVAL;
+                retval = -EINVAL;
                 goto out;
             }
             // check if seek is out of bounds
-            buffer_index = (dev->buffer.out_offs + seekto.write_cmd) % AESDCHAR_MAX_WRITE_OPERATIONS;
-            if (dev->buffer.entry[buffer_index].buffptr == NULL) {
+            index = (dev->buffer.out_offs + seekto.write_cmd) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+            if (dev->buffer.entry[index].buffptr == NULL) {
                 retval = -EINVAL;
                 goto out;
             }
 
-            if (seekto.write_cmd_offset >= dev->buffer.entry[buffer_index].size) {
+            if (seekto.write_cmd_offset >= dev->buffer.entry[index].size) {
                 retval = -EINVAL;
                 goto out;
             }
@@ -274,7 +274,7 @@ long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
             // update new positon in file 
             filp->f_pos = newpos;
 
-            break:
+            break;
 
         default: 
             return -ENOTTY;
