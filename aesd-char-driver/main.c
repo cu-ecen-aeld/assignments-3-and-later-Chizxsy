@@ -171,12 +171,70 @@ out:
     mutex_unlock(&dev->lock);
     return retval;
 }
+// ----- IOCTL -----
+loff_t aesd_llseek(struct file *filp, loff_t off, int whence){
+    // scull device
+    struct aesd_device *dev = filp->private_data;
+    struct aesd_buffer_entry *entry;
+    loff_t newpos;
+    int index;
+    size_t total_size;
+
+
+    if (mutex_lock_interruptible(&dev->lock)){
+        retval = -ERESTARTSYS;
+        goto out;
+    }
+    // get total entry size
+    AESD_CIRCULAR_BUFFER_FOREACH(entry, &dev->buffer, index){
+        total_size += entry->size;
+    }
+
+    mutex_unlock(&dev->lock);
+    
+    switch(whence) {
+        // SEEK SET
+        case SEEK_SET:
+            newpos = off;
+            break;
+
+        // SEEK CUR
+        case SEEK_CUR:
+            newpos = filp->f_pos + off;
+            break;
+
+        // SEEK END
+        case SEEK_END: 
+            newpos = total_size + off;
+            break;
+        
+        default:
+            return -EINVAL;
+
+    }
+    // check if position is out of bounds
+    if (newpos < 0 || newpos > total_size) {
+        return -EINVAL;
+    }
+
+    filp->f_pos = newpos;
+    return newpos;
+}
+
+long aesd_ioctl(stuct file *filp, unsigned int cmd, unsigned long arg){
+    switch(cmd){
+
+    }
+}
+
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
     .read =     aesd_read,
     .write =    aesd_write,
     .open =     aesd_open,
     .release =  aesd_release,
+    .llseek =   aesd_llseek,
+    .unlocked_ioctl = aesd_ioctl
 };
 
 static int aesd_setup_cdev(struct aesd_dev *dev)
