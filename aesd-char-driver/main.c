@@ -179,7 +179,7 @@ loff_t aesd_llseek(struct file *filp, loff_t off, int whence){
     struct aesd_buffer_entry *entry;
     loff_t newpos;
     int index;
-    size_t total_size;
+    size_t total_size = 0;
 
 
     if (mutex_lock_interruptible(&dev->lock)){
@@ -224,25 +224,67 @@ loff_t aesd_llseek(struct file *filp, loff_t off, int whence){
 long aesd_ioctl(stuct file *filp, unsigned int cmd, unsigned long arg){
     struct aesd_device *dev = filp->private_data;
     struct aesd_seekto seekto;
+    long retval = 0;
+    uint8_t index;
+    //loff_t newpos;
+    size_t newpos = 0;
+
+    // checks if the ioctl command is valid. From Google Gemini:
+    if (_IOC_TYPE(cmd) != AESD_IOC_MAGIC || _IOC_NR(cmd) > AESD_IOC_MAXNR) {
+        return -ENOTTY;
+    }
 
     switch(cmd){
         case AESDCHAR_IOCSEEKTO:
             if (copy_from_user(&seekto, (void __user *)arg, sizeof(seekto))){
                 return -EFAULT;
             }
-
+            
             if (mutex_lock_interruptible(&dev->lock)){
                 return -ERESTARTSYS;
             }
 
+            // check if the seek to command is with in the supported write operations
             if (seekto.write_cmd >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED){
                 return -EINVAL;
                 goto out;
             }
+            // check if seek is out of bounds
+            buffer_index = (dev->buffer.out_offs + seekto.write_cmd) % AESDCHAR_MAX_WRITE_OPERATIONS;
+            if (dev->buffer.entry[buffer_index].buffptr == NULL) {
+                retval = -EINVAL;
+                goto out;
+            }
+
+            if (seekto.write_cmd_offset >= dev->buffer.entry[buffer_index].size) {
+                retval = -EINVAL;
+                goto out;
+            }
+            // does the entry exist? 
+
+            // calculate new position in file
+            for (uint8_t i = 0; i < seekto.write_cmd; i++){
+                // ring buffer output offset + command. Modulus handles wrapping. i.e. 10 mod 10 = 0. 11 mod 10 = 1
+                index = (dev->buffer.out_offs + i) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+                newpos += dev->buffer.entry[i].size;
+            }
+            
+            newpos += seekto.write_cmd_offset;
+
+            // update new positon in file 
+            filp->f_pos = newpos;
+
+            break;
+
+
+
+        default: 
+            return -ENOTTY;
     }
 
 out:
     mutex_unlock(&dev->lock);
+    return retval;
 
 }
 
