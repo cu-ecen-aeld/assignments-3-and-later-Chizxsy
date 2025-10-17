@@ -19,6 +19,7 @@
 #include <linux/fs.h> // file_operations
 #include "aesdchar.h"
 #include "aesd-circular-buffer.h"
+#include "aesd_ioctl.h"
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
@@ -182,8 +183,7 @@ loff_t aesd_llseek(struct file *filp, loff_t off, int whence){
 
 
     if (mutex_lock_interruptible(&dev->lock)){
-        retval = -ERESTARTSYS;
-        goto out;
+        return -ERESTARTSYS;
     }
     // get total entry size
     AESD_CIRCULAR_BUFFER_FOREACH(entry, &dev->buffer, index){
@@ -222,9 +222,28 @@ loff_t aesd_llseek(struct file *filp, loff_t off, int whence){
 }
 
 long aesd_ioctl(stuct file *filp, unsigned int cmd, unsigned long arg){
-    switch(cmd){
+    struct aesd_device *dev = filp->private_data;
+    struct aesd_seekto seekto;
 
+    switch(cmd){
+        case AESDCHAR_IOCSEEKTO:
+            if (copy_from_user(&seekto, (void __user *)arg, sizeof(seekto))){
+                return -EFAULT;
+            }
+
+            if (mutex_lock_interruptible(&dev->lock)){
+                return -ERESTARTSYS;
+            }
+
+            if (seekto.write_cmd >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED){
+                return -EINVAL;
+                goto out;
+            }
     }
+
+out:
+    mutex_unlock(&dev->lock);
+
 }
 
 struct file_operations aesd_fops = {
